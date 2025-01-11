@@ -1,11 +1,12 @@
-package globaldormClient;
+package globaldormclient;
 
-import globaldormclient.User;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,30 +21,33 @@ public class GlobalDormClient {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
-        while (loggedInUser == null) {
-            System.out.println("\n=== Welcome to GlobalDorm Client ===");
-            System.out.println("1. Login");
-            System.out.println("2. Create New User");
-            System.out.println("3. Exit");
-            System.out.print("Choose an option: ");
+        while (true) { // Main loop to handle login and logout transitions
+            // Login loop
+            while (loggedInUser == null) {
+                System.out.println("\n=== Welcome to GlobalDorm Client ===");
+                System.out.println("1. Login");
+                System.out.println("2. Create New User");
+                System.out.println("3. Exit");
+                System.out.print("Choose an option: ");
 
-            int choice = scanner.nextInt();
-            scanner.nextLine(); // Consume newline
+                int choice = scanner.nextInt();
+                scanner.nextLine(); // Consume newline
 
-            switch (choice) {
-                case 1 -> login(scanner);
-                case 2 -> createNewUser(scanner);
-                case 3 -> {
-                    System.out.println("Exiting...");
-                    scanner.close();
-                    return;
+                switch (choice) {
+                    case 1 -> login(scanner); // Attempt login
+                    case 2 -> createNewUser(scanner); // Create a new user
+                    case 3 -> {
+                        System.out.println("Exiting...");
+                        scanner.close();
+                        return; // Exit the program
+                    }
+                    default -> System.out.println("Invalid option. Please try again.");
                 }
-                default -> System.out.println("Invalid option. Please try again.");
             }
+            // User is logged in, proceed to Room Management Menu
+            roomManagementMenu(scanner);
+            // After logout, loggedInUser will be null, and the program will return to the login loop
         }
-
-        // User is logged in, proceed to room management menu
-        roomManagementMenu(scanner);
     }
 
     private static void login(Scanner scanner) {
@@ -113,8 +117,8 @@ public class GlobalDormClient {
                 case 4 -> viewApplicationHistory(scanner);
                 case 5 -> {
                     System.out.println("Logged out successfully.");
-                    loggedInUser = null;
-                    return;
+                    loggedInUser = null; // Reset logged-in user
+                    return; // Exit the menu and return to login loop
                 }
                 default -> System.out.println("Invalid option. Please try again.");
             }
@@ -170,19 +174,156 @@ public class GlobalDormClient {
     }
 
     private static void viewAllRooms() {
-        // Implement HTTP GET for /rooms (existing functionality)
+        try {
+            URL url = new URL(BASE_URL);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            if (connection.getResponseCode() == 200) {
+                BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String line;
+                System.out.println("\n=== All Rooms ===");
+                while ((line = in.readLine()) != null) {
+                    System.out.println(line);
+                }
+                in.close();
+            } else {
+                System.out.println("Error: Unable to fetch rooms. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void applyForRoom(Scanner scanner) {
-        // Implement HTTP POST for /apply (existing functionality)
+        try {
+            System.out.print("Enter Application ID: ");
+            long applicationId = scanner.nextLong();
+
+            // Validate applicationId
+            if (applicationId <= 0) {
+                System.out.println("Error: Application ID must be a positive number.");
+                return;
+            }
+
+            System.out.print("Enter Room ID: ");
+            long roomId = scanner.nextLong();
+
+            // Validate roomId
+            if (roomId <= 0) {
+                System.out.println("Error: Room ID must be a positive number.");
+                return;
+            }
+
+            scanner.nextLine(); // Consume newline
+
+            // Use the logged-in user for userId
+            String userId = loggedInUser;
+
+            // Create JSON payload
+            String jsonInput = String.format(
+                "{\"applicationId\":%d,\"roomId\":%d,\"userId\":\"%s\"}",
+                applicationId, roomId, userId
+            );
+
+            // Make the POST request
+            URL url = new URL(BASE_URL + "/apply");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+
+            // Send the JSON payload
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = jsonInput.getBytes("utf-8");
+                os.write(input, 0, input.length);
+            }
+
+            // Handle the server response
+            if (connection.getResponseCode() == 200) {
+                BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String response;
+                System.out.println("\n=== Application Response ===");
+                while ((response = in.readLine()) != null) {
+                    System.out.println(response);
+                }
+                in.close();
+            } else {
+                System.out.println("Error: Unable to apply for room. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred while applying for the room:");
+            e.printStackTrace();
+        }
     }
 
     private static void cancelApplication(Scanner scanner) {
-        // Implement HTTP DELETE for /cancel/{applicationId} (existing functionality)
+        
+        viewApplicationHistory(scanner);
+        // Prompt user for application ID to cancel
+        try {
+            System.out.print("\nEnter Application ID to Cancel: ");
+            long applicationId = scanner.nextLong();
+
+            // Validate applicationId
+            if (applicationId <= 0) {
+                System.out.println("Error: Application ID must be a positive number.");
+                return;
+            }
+
+            // Make the DELETE request
+            URL url = new URL(BASE_URL + "/cancel/" + applicationId);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("DELETE");
+
+            // Handle the server response
+            switch (connection.getResponseCode()) {
+                case 200 -> {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                        String response;
+                        System.out.println("\n=== Cancel Response ===");
+                        while ((response = in.readLine()) != null) {
+                            System.out.println(response);
+                        }
+                    }
+                }
+
+                case 404 -> System.out.println("Error: Application not found.");
+                default -> System.out.println("Error: Unable to cancel application. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred while cancelling the application:");
+            e.printStackTrace();
+        }
     }
 
     private static void viewApplicationHistory(Scanner scanner) {
-        // Implement HTTP GET for /history/{userId} (existing functionality)
+        // Display user's application history
+        System.out.println("\n=== Your Applications ===");
+        try {
+            // Make the GET request for the logged-in user's application history
+            URL url = new URL(BASE_URL + "/history/" + loggedInUser);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            // Handle the server response
+            switch (connection.getResponseCode()) {
+                case 200 -> {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                        String response;
+                        System.out.println("\n=== Application History ===");
+                        while ((response = in.readLine()) != null) {
+                            System.out.println(response);
+                        }
+                    }
+                }
+                case 404 -> System.out.println("Error: No application history found for the logged-in user.");
+                default -> System.out.println("Error: Unable to fetch application history. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred while fetching the application history:");
+            e.printStackTrace();
+        }
     }
 }
 
