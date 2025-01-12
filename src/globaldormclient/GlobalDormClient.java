@@ -1,6 +1,9 @@
 package globaldormclient;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.*;
@@ -116,7 +119,8 @@ public class GlobalDormClient {
             System.out.println("3. Cancel an Application");
             System.out.println("4. View Application History");
             System.out.println("5. Check Distance to a Room");
-            System.out.println("6. Logout");
+            System.out.println("6. Check Weather");
+            System.out.println("7. Logout");
             System.out.print("Choose an option: ");
 
             int choice = scanner.nextInt();
@@ -127,8 +131,9 @@ public class GlobalDormClient {
                 case 2 -> applyForRoom(scanner);
                 case 3 -> cancelApplication(scanner);
                 case 4 -> viewApplicationHistory(scanner);
-                case 5 -> checkDistanceToRoom(scanner); // New option
-                case 6 -> {
+                case 5 -> checkDistanceToRoom(scanner);
+                case 6 -> checkWeather(scanner); // New menu option
+                case 7 -> {
                     System.out.println("Logged out successfully.");
                     loggedInUser = null;
                     return; // Exit the menu and return to login
@@ -226,7 +231,7 @@ public class GlobalDormClient {
             } else {
                 System.out.println("Error: Unable to fetch rooms. HTTP Code: " + connection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
@@ -287,7 +292,7 @@ public class GlobalDormClient {
             } else {
                 System.out.println("Error: Unable to apply for room. HTTP Code: " + connection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("An error occurred while applying for the room:");
             e.printStackTrace();
         }
@@ -327,7 +332,7 @@ public class GlobalDormClient {
                 case 404 -> System.out.println("Error: Application not found.");
                 default -> System.out.println("Error: Unable to cancel application. HTTP Code: " + connection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("An error occurred while cancelling the application:");
             e.printStackTrace();
         }
@@ -356,7 +361,7 @@ public class GlobalDormClient {
                 case 404 -> System.out.println("Error: No application history found for the logged-in user.");
                 default -> System.out.println("Error: Unable to fetch application history. HTTP Code: " + connection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("An error occurred while fetching the application history:");
             e.printStackTrace();
         }
@@ -424,7 +429,7 @@ public class GlobalDormClient {
                 case 404 -> System.out.println("Error: Application not found.");
                 default -> System.out.println("Error: Unable to accept offer. HTTP Code: " + acceptConnection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("An error occurred while accepting the offer:");
             e.printStackTrace();
         }
@@ -459,20 +464,106 @@ public class GlobalDormClient {
             // Handle the server response
             switch (connection.getResponseCode()) {
                 case 200 -> {
+                    StringBuilder response;
                     try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-                        String response;
-                        System.out.println("\n=== Proximity Information ===");
-                        while ((response = in.readLine()) != null) {
-                            System.out.println(response);
+                        response = new StringBuilder();
+                        String line;
+                        while ((line = in.readLine()) != null) {
+                            response.append(line);
                         }
+                    }
+                    // Parse the JSON response and extract distance
+                    double distanceMeters = parseDistanceFromResponse(response.toString());
+                    if (distanceMeters >= 0) {
+                        double distanceKilometers = distanceMeters / 1000.0; // Convert meters to kilometers
+                        System.out.printf("\nThe distance to the room is %.2f km.%n", distanceKilometers);
+                    } else {
+                        System.out.println("Error: Unable to extract distance from response.");
                     }
                 }
 
                 case 404 -> System.out.println("Error: Room not found or invalid postcode.");
                 default -> System.out.println("Error: Unable to fetch proximity data. HTTP Code: " + connection.getResponseCode());
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             System.out.println("An error occurred while checking proximity:");
+            e.printStackTrace();
+        }
+    }
+    
+    private static double parseDistanceFromResponse(String jsonResponse) {
+        try {
+            // Parse the JSON response using Gson
+            JsonObject jsonObject = new Gson().fromJson(jsonResponse, JsonObject.class);
+            JsonArray routes = jsonObject.getAsJsonArray("routes");
+            if (routes != null && routes.size() > 0) {
+                JsonObject route = routes.get(0).getAsJsonObject();
+                return route.get("distance").getAsDouble(); // Extract distance in meters
+            }
+        } catch (JsonSyntaxException e) {
+            e.printStackTrace();
+        }
+        return -1; // Return -1 if parsing fails
+    }
+    
+    private static void checkWeather(Scanner scanner) {
+        try {
+            System.out.println("\n=== Check Weather ===");
+            System.out.println("1. Check Weather by Room ID");
+            System.out.println("2. Check Weather by Postcode");
+            System.out.print("Choose an option: ");
+
+            int choice = scanner.nextInt();
+            scanner.nextLine(); // Consume newline
+
+            String endpoint;
+            switch (choice) {
+                case 1 -> {
+                    // Check weather by Room ID
+                    System.out.print("Enter the Room ID: ");
+                    long roomId = scanner.nextLong();
+                    scanner.nextLine(); // Consume newline
+                    // Validate Room ID
+                    if (roomId <= 0) {
+                        System.out.println("Error: Room ID must be a positive number.");
+                        return;
+                    }   endpoint = BASE_URL + "/rooms/weather?roomId=" + roomId;
+                }
+                case 2 -> {
+                    // Check weather by Postcode
+                    System.out.print("Enter the Postcode: ");
+                    String postcode = scanner.nextLine();
+                    // Validate Postcode
+                    if (postcode.isBlank()) {
+                        System.out.println("Error: Postcode cannot be blank.");
+                        return;
+                    }   endpoint = BASE_URL + "/weather?postcode=" + URLEncoder.encode(postcode, "UTF-8");
+                }
+                default -> {
+                    System.out.println("Invalid option.");
+                    return;
+                }
+            }
+
+            // Call the weather endpoint
+            URL url = new URL(endpoint);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            // Handle the server response
+            if (connection.getResponseCode() == 200) {
+                try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    String response;
+                    System.out.println("\n=== Weather Information ===");
+                    while ((response = in.readLine()) != null) {
+                        System.out.println(response);
+                    }
+                }
+            } else {
+                System.out.println("Error: Unable to fetch weather data. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (IOException e) {
+            System.out.println("An error occurred while checking weather:");
             e.printStackTrace();
         }
     }
