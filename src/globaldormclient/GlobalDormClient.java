@@ -16,7 +16,8 @@ public class GlobalDormClient {
     private static final String BASE_URL = "http://localhost:8080/GlobalDorm/Dorm/rooms";
     private static final String USERS_FILE = "users.json";
     private static final Gson gson = new Gson();
-    private static String loggedInUser;
+    private static String loggedInUser = null;
+    private static boolean isAdmin = false;
 
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
@@ -44,9 +45,14 @@ public class GlobalDormClient {
                     default -> System.out.println("Invalid option. Please try again.");
                 }
             }
-            // User is logged in, proceed to Room Management Menu
-            roomManagementMenu(scanner);
-            // After logout, loggedInUser will be null, and the program will return to the login loop
+            
+            if (isAdmin){
+                adminMenu(scanner);
+            }else{
+                roomManagementMenu(scanner);
+            }
+            // User is logged in, proceed to Room Management Menu unless an Admin
+            // After logout, loggedInUser will be null, and the program will return to the login loop            
         }
     }
 
@@ -61,11 +67,12 @@ public class GlobalDormClient {
         for (User user : users) {
             if (user.getUsername().equals(username) && user.getPassword().equals(hashPassword(password))) {
                 loggedInUser = username;
+                isAdmin = user.isAdmin(); // Set admin flag
                 System.out.println("Login successful! Welcome, " + loggedInUser);
                 return;
             }
         }
-
+        
         System.out.println("Invalid username or password. Please try again.");
     }
 
@@ -77,7 +84,10 @@ public class GlobalDormClient {
             System.out.print("Enter a password: ");
             String password = scanner.nextLine();
 
-            // Validate username is unique
+            System.out.print("Is this an admin account? (yes/no): ");
+            isAdmin = scanner.nextLine().equalsIgnoreCase("yes");
+
+            // Validate username uniqueness
             List<User> users = loadUsers();
             if (users.stream().anyMatch(user -> user.getUsername().equals(username))) {
                 System.out.println("Error: Username already exists.");
@@ -88,7 +98,7 @@ public class GlobalDormClient {
             String hashedPassword = hashPassword(password);
 
             // Add the new user to the list and save to file
-            users.add(new User(username, hashedPassword));
+            users.add(new User(username, hashedPassword, isAdmin));
             saveUsers(users);
 
             System.out.println("User created successfully! Please log in.");
@@ -119,6 +129,29 @@ public class GlobalDormClient {
                     System.out.println("Logged out successfully.");
                     loggedInUser = null; // Reset logged-in user
                     return; // Exit the menu and return to login loop
+                }
+                default -> System.out.println("Invalid option. Please try again.");
+            }
+        }
+    }
+    
+    private static void adminMenu(Scanner scanner) {
+        while (true) {
+            System.out.println("\n=== Admin Menu ===");
+            System.out.println("1. Accept Room Offer");
+            System.out.println("2. Logout");
+            System.out.print("Choose an option: ");
+
+            int choice = scanner.nextInt();
+            scanner.nextLine(); // Consume newline
+
+            switch (choice) {
+                case 1 -> acceptRoomOffer(scanner);
+                case 2 -> {
+                    System.out.println("Logged out successfully.");
+                    loggedInUser = null;
+                    isAdmin = false;
+                    return; // Exit the admin menu
                 }
                 default -> System.out.println("Invalid option. Please try again.");
             }
@@ -322,6 +355,48 @@ public class GlobalDormClient {
             }
         } catch (Exception e) {
             System.out.println("An error occurred while fetching the application history:");
+            e.printStackTrace();
+        }
+    }
+    
+    private static void acceptRoomOffer(Scanner scanner) {
+        if (!isAdmin) {
+            System.out.println("Error: Only admin users can accept room offers.");
+            return;
+        }
+
+        try {
+            System.out.print("Enter Application ID to Accept: ");
+            long applicationId = scanner.nextLong();
+
+            // Validate applicationId
+            if (applicationId <= 0) {
+                System.out.println("Error: Application ID must be a positive number.");
+                return;
+            }
+
+            // Make the PUT request
+            URL url = new URL(BASE_URL + "/accept/" + applicationId);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("PUT");
+
+            // Handle the server response
+            switch (connection.getResponseCode()) {
+                case 200 -> {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                        String response;
+                        System.out.println("\n=== Accept Offer Response ===");
+                        while ((response = in.readLine()) != null) {
+                            System.out.println(response);
+                        }
+                    }
+                }
+
+                case 404 -> System.out.println("Error: Application not found.");
+                default -> System.out.println("Error: Unable to accept offer. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred while accepting the offer:");
             e.printStackTrace();
         }
     }
