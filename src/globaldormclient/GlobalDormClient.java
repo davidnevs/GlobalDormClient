@@ -7,6 +7,7 @@ import java.io.*;
 import java.lang.reflect.Type;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
@@ -114,7 +115,8 @@ public class GlobalDormClient {
             System.out.println("2. Apply for a Room");
             System.out.println("3. Cancel an Application");
             System.out.println("4. View Application History");
-            System.out.println("5. Logout");
+            System.out.println("5. Check Distance to a Room");
+            System.out.println("6. Logout");
             System.out.print("Choose an option: ");
 
             int choice = scanner.nextInt();
@@ -125,10 +127,11 @@ public class GlobalDormClient {
                 case 2 -> applyForRoom(scanner);
                 case 3 -> cancelApplication(scanner);
                 case 4 -> viewApplicationHistory(scanner);
-                case 5 -> {
+                case 5 -> checkDistanceToRoom(scanner); // New option
+                case 6 -> {
                     System.out.println("Logged out successfully.");
-                    loggedInUser = null; // Reset logged-in user
-                    return; // Exit the menu and return to login loop
+                    loggedInUser = null;
+                    return; // Exit the menu and return to login
                 }
                 default -> System.out.println("Invalid option. Please try again.");
             }
@@ -423,6 +426,53 @@ public class GlobalDormClient {
             }
         } catch (Exception e) {
             System.out.println("An error occurred while accepting the offer:");
+            e.printStackTrace();
+        }
+    }
+    
+    private static void checkDistanceToRoom(Scanner scanner) {
+        if (loggedInUser == null) {
+            System.out.println("Error: No user is currently logged in.");
+            return;
+        }
+
+        try {
+            // Prompt for user location (postcode)
+            System.out.print("Enter your postcode: ");
+            String userPostcode = scanner.nextLine();
+
+            // Prompt for room ID
+            System.out.print("Enter the Room ID: ");
+            long roomId = scanner.nextLong();
+
+            // Validate room ID
+            if (roomId <= 0) {
+                System.out.println("Error: Room ID must be a positive number.");
+                return;
+            }
+
+            // Call the proximity endpoint
+            URL url = new URL(BASE_URL + "/proximity?userPostcode=" + URLEncoder.encode(userPostcode, "UTF-8") + "&roomId=" + roomId);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            // Handle the server response
+            switch (connection.getResponseCode()) {
+                case 200 -> {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                        String response;
+                        System.out.println("\n=== Proximity Information ===");
+                        while ((response = in.readLine()) != null) {
+                            System.out.println(response);
+                        }
+                    }
+                }
+
+                case 404 -> System.out.println("Error: Room not found or invalid postcode.");
+                default -> System.out.println("Error: Unable to fetch proximity data. HTTP Code: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            System.out.println("An error occurred while checking proximity:");
             e.printStackTrace();
         }
     }
