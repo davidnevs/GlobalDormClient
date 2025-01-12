@@ -366,7 +366,34 @@ public class GlobalDormClient {
         }
 
         try {
-            System.out.print("Enter Application ID to Accept: ");
+            // Fetch all pending applications
+            System.out.println("\n=== Pending Room Applications ===");
+            URL url = new URL(BASE_URL + "/applications/pending");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            if (connection.getResponseCode() == 200) {
+                BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String response;
+                boolean hasPending = false;
+
+                while ((response = in.readLine()) != null) {
+                    System.out.println(response);
+                    hasPending = true;
+                }
+                in.close();
+
+                if (!hasPending) {
+                    System.out.println("No pending room applications found.");
+                    return;
+                }
+            } else {
+                System.out.println("Error: Unable to fetch pending applications. HTTP Code: " + connection.getResponseCode());
+                return;
+            }
+
+            // Prompt admin to accept an application
+            System.out.print("\nEnter Application ID to Accept: ");
             long applicationId = scanner.nextLong();
 
             // Validate applicationId
@@ -375,15 +402,14 @@ public class GlobalDormClient {
                 return;
             }
 
-            // Make the PUT request
-            URL url = new URL(BASE_URL + "/accept/" + applicationId);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("PUT");
+            // Make the PUT request to accept the offer
+            URL acceptUrl = new URL(BASE_URL + "/accept/" + applicationId);
+            HttpURLConnection acceptConnection = (HttpURLConnection) acceptUrl.openConnection();
+            acceptConnection.setRequestMethod("PUT");
 
-            // Handle the server response
-            switch (connection.getResponseCode()) {
+            switch (acceptConnection.getResponseCode()) {
                 case 200 -> {
-                    try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(acceptConnection.getInputStream()))) {
                         String response;
                         System.out.println("\n=== Accept Offer Response ===");
                         while ((response = in.readLine()) != null) {
@@ -393,7 +419,7 @@ public class GlobalDormClient {
                 }
 
                 case 404 -> System.out.println("Error: Application not found.");
-                default -> System.out.println("Error: Unable to accept offer. HTTP Code: " + connection.getResponseCode());
+                default -> System.out.println("Error: Unable to accept offer. HTTP Code: " + acceptConnection.getResponseCode());
             }
         } catch (Exception e) {
             System.out.println("An error occurred while accepting the offer:");
