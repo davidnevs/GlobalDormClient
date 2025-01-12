@@ -527,7 +527,7 @@ public class GlobalDormClient {
                     if (roomId <= 0) {
                         System.out.println("Error: Room ID must be a positive number.");
                         return;
-                    }   endpoint = BASE_URL + "/rooms/weather?roomId=" + roomId;
+                    }   endpoint = BASE_URL + "/weather/room?roomId=" + roomId;
                 }
                 case 2 -> {
                     // Check weather by Postcode
@@ -537,7 +537,7 @@ public class GlobalDormClient {
                     if (postcode.isBlank()) {
                         System.out.println("Error: Postcode cannot be blank.");
                         return;
-                    }   endpoint = BASE_URL + "/weather?postcode=" + URLEncoder.encode(postcode, "UTF-8");
+                    }   endpoint = BASE_URL + "/weather/postcode?postcode=" + URLEncoder.encode(postcode, "UTF-8");
                 }
                 default -> {
                     System.out.println("Invalid option.");
@@ -552,13 +552,17 @@ public class GlobalDormClient {
 
             // Handle the server response
             if (connection.getResponseCode() == 200) {
+                StringBuilder response;
                 try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-                    String response;
-                    System.out.println("\n=== Weather Information ===");
-                    while ((response = in.readLine()) != null) {
-                        System.out.println(response);
+                    response = new StringBuilder();
+                    String line;
+                    while ((line = in.readLine()) != null) {
+                        response.append(line);
                     }
                 }
+
+                // Parse and pretty print the weather data
+                prettyPrintWeather(response.toString());
             } else {
                 System.out.println("Error: Unable to fetch weather data. HTTP Code: " + connection.getResponseCode());
             }
@@ -567,6 +571,31 @@ public class GlobalDormClient {
             e.printStackTrace();
         }
     }
+    
+    private static void prettyPrintWeather(String jsonResponse) {
+        try {
+            Gson gson = new Gson();
+            JsonObject jsonObject = gson.fromJson(jsonResponse, JsonObject.class);
+
+            if (jsonObject.has("weather")) {
+                JsonObject weather = jsonObject.getAsJsonObject("weather");
+                int timepoint = weather.get("timepoint").getAsInt();
+                int temperature = weather.get("temperature").getAsInt();
+                int cloudcover = weather.get("cloudcover").getAsInt();
+
+                System.out.println("\n=== Weather Information ===");
+                System.out.println("Forecast Timepoint: " + timepoint + " hours from now");
+                System.out.println("Temperature: " + temperature + "°C");
+                System.out.println("Cloud Cover: " + cloudcover + " (scale of 1-9)");
+            } else {
+                System.out.println("No weather data available.");
+            }
+        } catch (JsonSyntaxException e) {
+            System.out.println("Error while parsing weather data:");
+            e.printStackTrace();
+        }
+    }
+    
 }
 
 
